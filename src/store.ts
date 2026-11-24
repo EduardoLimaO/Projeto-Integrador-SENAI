@@ -1,322 +1,357 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { Alert, EventEntry, LogEntry, Port, PortStatus, Session, SolarState, Station, User } from "./types";
+import { UID_TO_CABIN } from "./hardware.config";
+import { parseLine } from "./serial/parseLine";
+import type { AccessRecord, CabinNumber, FirmwareActions, FirmwareAlert, FirmwareState, LdrPoint, SerialLog } from "./types";
 
-const mainStation = "TOT-001";
-const noOpStorage = {
-  getItem: (_name: string) => null,
-  setItem: (_name: string, _value: string) => undefined,
-  removeItem: (_name: string) => undefined
-};
-const names = ["Ana Souza", "Bruno Lima", "Camila Rocha", "Diego Alves", "Eduarda Santos", "Felipe Costa", "Giovana Martins", "Heitor Oliveira"];
-const newId = (prefix: string) => `${prefix}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
-const stationSeeds: Station[] = [
-  { id: "TOT-001", name: "Entrada", location: "Bloco principal", online: true },
-  { id: "TOT-002", name: "Pátio", location: "Pátio central", online: true },
-  { id: "TOT-003", name: "Biblioteca", location: "Biblioteca", online: true }
-];
+const cabins = (): FirmwareState["cabines"] => ({
+  1: { estado: "sem dados", ultimaLiberacao: null, totalLiberacoes: 0 },
+  2: { estado: "sem dados", ultimaLiberacao: null, totalLiberacoes: 0 },
+  3: { estado: "sem dados", ultimaLiberacao: null, totalLiberacoes: 0 },
+  4: { estado: "sem dados", ultimaLiberacao: null, totalLiberacoes: 0 }
+});
 
-function seedUsers(): User[] {
-  return Array.from({ length: 864 }, (_, index) => ({
-    id: `USR-${String(index + 1).padStart(4, "0")}`,
-    name: names[index % names.length],
-    registration: String(100000 + index),
-    active: true
-  }));
-}
-
-function seedPorts(now: number): Port[] {
-  return stationSeeds.flatMap((station, stationIndex) => Array.from({ length: 4 }, (_, index) => {
-    const mainStatus: PortStatus[] = ["disponivel", "em_utilizacao", "disponivel", "manutencao"];
-    const status = stationIndex === 0 ? mainStatus[index] : "disponivel";
-    return {
-      id: `PORT-00${index + 1}`,
-      stationId: station.id,
-      label: `Porta 0${index + 1}`,
-      status,
-      online: true,
-      lastUsedAt: now - (index + 1) * 3600000,
-      currentSessionId: null,
-      maintenanceReason: status === "manutencao" ? "Inspeção preventiva" : null,
-      blockedReason: null
-    };
-  }));
-}
-
-function seedSessions(users: User[], now: number): Session[] {
-  const counts = [[424, 349, 387, 88], [18, 14, 16, 4], [18, 14, 16, 4]];
-  return stationSeeds.flatMap((station, stationIndex) => counts[stationIndex].flatMap((count, portIndex) =>
-    Array.from({ length: count }, (_, index) => {
-      const age = (index * 7919 + portIndex * 1703 + stationIndex * 311) % (30 * 24 * 60);
-      const startedAt = now - age * 60000;
-      const endedAt = Math.min(now, startedAt + (18 + ((index * 13) % 70)) * 60000);
-      return {
-        id: `HST-${station.id}-${portIndex + 1}-${index + 1}`,
-        stationId: station.id,
-        portId: `PORT-00${portIndex + 1}`,
-        userId: users[(index * 7 + portIndex * 31 + stationIndex * 43) % users.length].id,
-        startedAt,
-        endedAt,
-        kWh: Number((0.08 + ((index * 19) % 90) / 100).toFixed(2)),
-        status: "concluida" as const,
-        targetKwh: 1
-      };
-    })
-  ));
-}
-
-function initialState(): SolarState {
-  const now = Date.now();
-  const users = seedUsers();
-  const ports = seedPorts(now);
-  const sessions = seedSessions(users, now);
-  const active = {
-    id: "SES-ACTIVE-1", stationId: mainStation, portId: "PORT-002", userId: users[863].id,
-    startedAt: now - 14 * 60000, endedAt: null, kWh: 0.19, status: "ativa" as const, targetKwh: 1
-  };
-  ports.find((port) => port.id === active.portId && port.stationId === mainStation)!.currentSessionId = active.id;
-  sessions.unshift(active);
+function initialState(): FirmwareState {
   return {
-    stations: stationSeeds, selectedStationId: mainStation, ports, sessions, users, alerts: [{
-      id: "ALT-SEED-1", stationId: mainStation, title: "Porta 04 necessita de manutenção",
-      origin: "PORT-004", severity: "atencao", status: "aberto", openedAt: now - 28 * 60000,
-      acknowledgedAt: null, acknowledgedBy: null, resolvedAt: null
-    }],
-    logs: [{ id: "LOG-SEED", stationId: mainStation, timestamp: now, level: "INFO", message: "Heartbeat recebido", origin: "ESP32-001" }],
-    events: [{ id: "EV-SEED", stationId: mainStation, type: "device", message: "Estação TOT-001 conectada", timestamp: now }],
-    readings: stationSeeds.flatMap((station, stationIndex) => Array.from({ length: 720 }, (_, i) => {
-      const timestamp = now - (719 - i) * 3600000;
-      const hour = new Date(timestamp).getHours();
-      const powerKw = Math.max(0, 2.2 * Math.sin(((hour - 6) / 12) * Math.PI)) * (1 + stationIndex * 0.08);
-      return {
-        stationId: station.id,
-        timestamp,
-        generatedKwh: Number((powerKw * 0.72).toFixed(2)),
-        consumedKwh: Number((0.35 + (i % 5) * 0.08 + stationIndex * 0.05).toFixed(2)),
-        powerKw: Number(powerKw.toFixed(2))
-      };
-    })),
-    device: { firmware: "v2.4.1", ip: "192.168.1.42", rssi: -58, uptimeSeconds: 12 * 86400 + 4 * 3600, lastHeartbeatAt: now },
-    outages: [], simulator: { paused: false, lastHeartbeatLogAt: now }, lastTickAt: now
+    connection: "desconectado",
+    source: "demo",
+    connectionInfo: { vendorId: null, productId: null },
+    connectedAt: null,
+    lastDataAt: null,
+    linesReceived: 0,
+    lineTimestamps: [],
+    ldrEsq: null,
+    ldrDir: null,
+    diferenca: null,
+    angulo: null,
+    motor: null,
+    cabines: cabins(),
+    acessos: [],
+    logs: [],
+    alertas: [],
+    rfid: { estado: "sem_dados", falhas: null, versao: null },
+    historicoLdr: []
   };
 }
 
-interface SolarActions {
-  selectStation: (id: string) => void;
-  startSession: (portId: string, userId: string, targetKwh: number) => string;
-  finishSession: (sessionId: string, cancelled?: boolean) => void;
-  setMaintenance: (portId: string, reason: string) => void;
-  releasePort: (portId: string, note?: string) => void;
-  toggleBlock: (portId: string) => void;
-  acknowledgeAlert: (alertId: string) => void;
-  resolveAlert: (alertId: string, note: string) => void;
-  toggleDevice: () => void;
-  restartDevice: () => void;
-  restartPort: (portId: string) => void;
-  forcePortFailure: () => void;
-  demandSpike: () => void;
-  tick: () => void;
-  toggleSimulation: () => void;
-  reset: () => void;
+let idSequence = 0;
+const id = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${(++idSequence).toString(36)}`;
+
+function logLevel(raw: string): "INFO" | "WARN" | "ERROR" {
+  if (/^ERRO:/i.test(raw)) return "ERROR";
+  if (/ACESSO NEGADO|\[RFID\].*(Leitor sem resposta|nova tentativa)/i.test(raw)) return "WARN";
+  return "INFO";
 }
 
-function appendLog(logs: LogEntry[], level: LogEntry["level"], message: string, origin: string, stationId = mainStation): LogEntry[] {
-  return [{ id: newId("LOG"), stationId, timestamp: Date.now(), level, message, origin }, ...logs].slice(0, 500);
+function appendAlert(alertas: FirmwareAlert[], alert: Omit<FirmwareAlert, "id" | "status" | "resolvedAt" | "seenAt">): FirmwareAlert[] {
+  if ((alert.origin === "rfid" || alert.origin === "conexao")
+    && alertas.some((item) => item.origin === alert.origin && item.status !== "resolvido")) return alertas;
+  return [{
+    ...alert,
+    id: id("alerta"),
+    status: "aberto",
+    resolvedAt: null,
+    seenAt: null
+  }, ...alertas];
 }
-function appendEvent(events: EventEntry[], type: EventEntry["type"], message: string, portId?: string, stationId = mainStation): EventEntry[] {
-  return [{ id: newId("EV"), stationId, type, message, portId, timestamp: Date.now() }, ...events].slice(0, 200);
+
+function resolveAlerts(alertas: FirmwareAlert[], origin: FirmwareAlert["origin"], now: number, note: string): FirmwareAlert[] {
+  return alertas.map((alert) => alert.origin === origin && alert.status !== "resolvido"
+    ? { ...alert, status: "resolvido", resolvedAt: now, note }
+    : alert);
 }
-function createAlert(state: SolarState, title: string, origin: string, severity: Alert["severity"]): Alert[] {
-  if (state.alerts.some((alert) => alert.stationId === state.selectedStationId && alert.origin === origin && alert.status !== "resolvido")) return state.alerts;
-  return [{ id: newId("ALT"), stationId: state.selectedStationId, title, origin, severity, status: "aberto", openedAt: Date.now(), acknowledgedAt: null, acknowledgedBy: null, resolvedAt: null }, ...state.alerts];
+
+function cabinNumber(value: number): CabinNumber | null {
+  return value >= 1 && value <= 4 ? value as CabinNumber : null;
 }
-function connectionUpdate(state: SolarState, stationId: string, online: boolean): Partial<SolarState> {
-  const station = state.stations.find((item) => item.id === stationId);
-  if (!station || station.online === online) return state;
-  const outages = online
-    ? state.outages.map((outage) => outage.stationId === stationId && !outage.endedAt ? { ...outage, endedAt: Date.now() } : outage)
-    : state.outages.some((outage) => outage.stationId === stationId && !outage.endedAt) ? state.outages : [...state.outages, { stationId, startedAt: Date.now(), endedAt: null }];
-  const stationState = { ...state, selectedStationId: stationId };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isAccessRecord(value: unknown): value is AccessRecord {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.ts === "number" && typeof value.uid === "string"
+    && (value.resultado === "liberado" || value.resultado === "negado")
+    && (value.cabine === undefined || (typeof value.cabine === "number" && value.cabine >= 1 && value.cabine <= 4))
+    && (value.dataSource === "demo" || value.dataSource === "usb");
+}
+
+function isSerialLog(value: unknown): value is SerialLog {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.timestamp === "number" && typeof value.raw === "string"
+    && (value.level === "INFO" || value.level === "WARN" || value.level === "ERROR")
+    && (value.dataSource === "demo" || value.dataSource === "usb");
+}
+
+function isFirmwareAlert(value: unknown): value is FirmwareAlert {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.title === "string" && typeof value.openedAt === "number"
+    && (value.status === "aberto" || value.status === "reconhecido" || value.status === "resolvido")
+    && (value.dataSource === "demo" || value.dataSource === "usb");
+}
+
+function createThrottledStorage() {
+  const intervalMs = 10_000;
+  let lastWrite = 0;
+  let pending: { name: string; value: string } | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
   return {
-    stations: state.stations.map((item) => item.id === stationId ? { ...item, online } : item),
-    ports: state.ports.map((port) => port.stationId === stationId ? { ...port, online } : port),
-    outages,
-    alerts: online ? state.alerts : createAlert(stationState, "ESP32 sem comunicação", "ESP32-001", "critico"),
-    logs: appendLog(state.logs, online ? "INFO" : "ERROR", online ? "Comunicação ESP32 restaurada" : "ESP32 desconectado", "ESP32-001", stationId),
-    events: appendEvent(state.events, "device", online ? "Comunicação restaurada" : "ESP32 offline", undefined, stationId)
-  };
-}
-
-export const useSolarStore = create<SolarState & SolarActions>()(persist((set, get) => ({
-  ...initialState(),
-  selectStation: (id) => set({ selectedStationId: id }),
-  startSession: (portId, userId, targetKwh) => {
-    const state = get();
-    if (!state.stations.find((station) => station.id === state.selectedStationId)?.online) throw new Error("O ESP32 está offline.");
-    const port = state.ports.find((item) => item.stationId === state.selectedStationId && item.id === portId);
-    if (!port || port.status !== "disponivel" || !port.online) throw new Error("Esta porta não está disponível ou está offline.");
-    if (!state.users.some((user) => user.id === userId && user.active)) throw new Error("Selecione um usuário ativo.");
-    if (!Number.isFinite(targetKwh) || targetKwh <= 0) throw new Error("A meta da sessão deve ser maior que zero.");
-    if (state.sessions.some((session) => session.stationId === state.selectedStationId && session.userId === userId && session.status === "ativa")) throw new Error("Este usuário já possui uma sessão ativa.");
-    if (state.sessions.some((session) => session.portId === portId && session.stationId === state.selectedStationId && session.status === "ativa")) throw new Error("Esta porta já possui uma sessão ativa.");
-    const session: Session = { id: newId("SES"), stationId: state.selectedStationId, portId, userId, startedAt: Date.now(), endedAt: null, kWh: 0, status: "ativa", targetKwh };
-    set((s) => ({
-      sessions: [session, ...s.sessions],
-      ports: s.ports.map((item) => item.id === portId && item.stationId === s.selectedStationId ? { ...item, status: "em_utilizacao", currentSessionId: session.id } : item),
-      logs: appendLog(s.logs, "INFO", `Nova sessão iniciada · ${port.label}`, portId, s.selectedStationId),
-      events: appendEvent(s.events, "session", `Nova sessão iniciada · ${port.label}`, portId, s.selectedStationId)
-    }));
-    return session.id;
-  },
-  finishSession: (sessionId, cancelled = false) => set((s) => {
-    const session = s.sessions.find((item) => item.id === sessionId && item.status === "ativa");
-    if (!session) return s;
-    const port = s.ports.find((item) => item.id === session.portId && item.stationId === session.stationId);
-    return {
-      sessions: s.sessions.map((item) => item.id === sessionId ? { ...item, status: cancelled ? "cancelada" : "concluida", endedAt: Date.now() } : item),
-      ports: s.ports.map((item) => item.id === session.portId && item.stationId === session.stationId ? { ...item, status: "disponivel", currentSessionId: null, lastUsedAt: Date.now() } : item),
-      logs: appendLog(s.logs, "INFO", `Sessão ${cancelled ? "cancelada" : "finalizada"} · ${port?.label ?? session.portId}`, session.portId, session.stationId),
-      events: appendEvent(s.events, "port", `${port?.label ?? session.portId} liberada`, session.portId, session.stationId)
-    };
-  }),
-  setMaintenance: (portId, reason) => set((s) => {
-    const port = s.ports.find((item) => item.id === portId && item.stationId === s.selectedStationId);
-    if (!port || !reason.trim()) return s;
-    const next = { ...s, ports: s.ports.map((item) => item.id === portId && item.stationId === s.selectedStationId ? { ...item, status: "manutencao" as const, maintenanceReason: reason, currentSessionId: null } : item) };
-    const sessions = s.sessions.map((session) => session.status === "ativa" && session.portId === portId && session.stationId === s.selectedStationId ? { ...session, status: "cancelada" as const, endedAt: Date.now() } : session);
-    return { ...next, sessions, alerts: createAlert(s, `${port.label} necessita de manutenção`, portId, "atencao"), logs: appendLog(s.logs, "WARN", `${port.label} colocada em manutenção: ${reason}`, portId, s.selectedStationId), events: appendEvent(s.events, "alert", `${port.label} em manutenção`, portId, s.selectedStationId) };
-  }),
-  releasePort: (portId, note = "Inspeção concluída") => set((s) => {
-    const port = s.ports.find((item) => item.id === portId && item.stationId === s.selectedStationId);
-    if (!port) return s;
-    return {
-      ports: s.ports.map((item) => item.id === portId && item.stationId === s.selectedStationId ? { ...item, status: "disponivel", maintenanceReason: null, blockedReason: null } : item),
-      alerts: s.alerts.map((alert) => alert.stationId === s.selectedStationId && alert.origin === portId && alert.status !== "resolvido" ? { ...alert, status: "resolvido", resolvedAt: Date.now(), note } : alert),
-      logs: appendLog(s.logs, "INFO", `${port.label} liberada: ${note}`, portId, s.selectedStationId),
-      events: appendEvent(s.events, "port", `${port.label} liberada`, portId, s.selectedStationId)
-    };
-  }),
-  toggleBlock: (portId) => set((s) => ({
-    ports: s.ports.map((port) => port.id === portId && port.stationId === s.selectedStationId && port.status !== "em_utilizacao"
-      ? { ...port, status: port.status === "bloqueada" ? "disponivel" : "bloqueada", blockedReason: port.status === "bloqueada" ? null : "Bloqueada pelo administrador" } : port),
-    logs: appendLog(s.logs, "WARN", `Estado de bloqueio alterado em ${portId}`, portId, s.selectedStationId),
-    events: appendEvent(s.events, "port", `Estado de bloqueio alterado em ${portId}`, portId, s.selectedStationId)
-  })),
-  acknowledgeAlert: (alertId) => set((s) => ({
-    alerts: s.alerts.map((alert) => alert.id === alertId && alert.status === "aberto" ? { ...alert, status: "reconhecido", acknowledgedAt: Date.now(), acknowledgedBy: "Eduardo Silva" } : alert),
-    logs: appendLog(s.logs, "INFO", `Alerta ${alertId} reconhecido`, "Central de alertas", s.selectedStationId)
-  })),
-  resolveAlert: (alertId, note) => set((s) => ({
-    alerts: s.alerts.map((alert) => alert.id === alertId && alert.status !== "resolvido" ? { ...alert, status: "resolvido", resolvedAt: Date.now(), note } : alert),
-    logs: appendLog(s.logs, "INFO", `Alerta ${alertId} resolvido`, "Central de alertas", s.selectedStationId)
-  })),
-  toggleDevice: () => set((s) => {
-    const station = s.stations.find((item) => item.id === s.selectedStationId);
-    return station ? connectionUpdate(s, station.id, !station.online) : s;
-  }),
-  restartDevice: () => {
-    const state = get();
-    const stationId = state.selectedStationId;
-    const station = state.stations.find((item) => item.id === stationId);
-    if (!station?.online) return;
-    set((s) => connectionUpdate(s, stationId, false));
-    window.setTimeout(() => {
-      set((s) => connectionUpdate(s, stationId, true));
-    }, 8000);
-  },
-  restartPort: (portId) => {
-    const state = get();
-    const port = state.ports.find((item) => item.id === portId && item.stationId === state.selectedStationId);
-    if (!port || !port.online) return;
-    set((s) => ({ ports: s.ports.map((item) => item.id === portId && item.stationId === s.selectedStationId ? { ...item, online: false } : item), logs: appendLog(s.logs, "WARN", `Reinicialização de ${port.label} iniciada`, portId, state.selectedStationId) }));
-    window.setTimeout(() => set((s) => ({
-      ports: s.ports.map((item) => item.id === portId && item.stationId === state.selectedStationId ? { ...item, online: true } : item),
-      logs: appendLog(s.logs, "INFO", `Reinicialização de ${port.label} concluída`, portId, state.selectedStationId),
-      events: appendEvent(s.events, "port", `${port.label} reiniciada`, portId, state.selectedStationId)
-    })), 3000);
-  },
-  forcePortFailure: () => {
-    const port = get().ports.find((item) => item.stationId === get().selectedStationId && item.status === "disponivel");
-    if (!port) return;
-    get().setMaintenance(port.id, "Falha simulada");
-  },
-  demandSpike: () => {
-    const state = get();
-    const available = state.ports.find((item) => item.stationId === state.selectedStationId && item.status === "disponivel");
-    if (!available) {
-      set((s) => ({ alerts: createAlert(s, "Pico de demanda: todas as portas ocupadas", "TOT-001", "atencao"), logs: appendLog(s.logs, "WARN", "Pico de demanda sem portas livres", "Simulador", state.selectedStationId) }));
-      return;
-    }
-    get().startSession(available.id, get().users[1].id, 0.6);
-  },
-  tick: () => set((s) => {
-    const currentTime = Date.now();
-    if (s.simulator.paused) return { ...s, lastTickAt: currentTime };
-    const hours = new Date(currentTime).getHours() + new Date(currentTime).getMinutes() / 60;
-    const powerKw = Math.max(0, 2.2 * Math.sin(((hours - 6) / 12) * Math.PI));
-    const elapsed = Math.max(0, (currentTime - s.lastTickAt) / 3600000);
-    const deviceOnline = s.stations.find((station) => station.id === s.selectedStationId)?.online ?? false;
-    const sessions = s.sessions.map((session) => session.status === "ativa" && deviceOnline ? { ...session, kWh: Number((session.kWh + 0.45 * elapsed).toFixed(4)) } : session);
-    let updated = { ...s, sessions, lastTickAt: currentTime, device: { ...s.device, uptimeSeconds: s.device.uptimeSeconds + (deviceOnline ? Math.round((currentTime - s.lastTickAt) / 1000) : 0), rssi: deviceOnline ? Math.round(Math.max(-72, Math.min(-42, s.device.rssi + (Math.random() * 6 - 3)))) : s.device.rssi } };
-    for (const session of sessions) if (session.status === "ativa" && session.kWh >= session.targetKwh) {
-      const current = updated.sessions.find((item) => item.id === session.id && item.status === "ativa");
-      if (current) {
-        updated = { ...updated, sessions: updated.sessions.map((item) => item.id === session.id ? { ...item, status: "concluida", endedAt: currentTime } : item), ports: updated.ports.map((port) => port.id === session.portId && port.stationId === session.stationId ? { ...port, status: "disponivel", currentSessionId: null, lastUsedAt: currentTime } : port), events: appendEvent(updated.events, "port", `${session.portId} liberada após sessão`, session.portId, session.stationId), logs: appendLog(updated.logs, "INFO", `Sessão ${session.id} concluída`, session.portId, session.stationId) };
+    getItem: (name: string) => typeof localStorage === "undefined" ? null : localStorage.getItem(name),
+    setItem: (name: string, value: string) => {
+      if (typeof localStorage === "undefined") return;
+      const now = Date.now();
+      if (now - lastWrite >= intervalMs) {
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        pending = null;
+        localStorage.setItem(name, value);
+        lastWrite = now;
+        return;
       }
+      pending = { name, value };
+      if (timer !== null) return;
+      timer = setTimeout(() => {
+        if (pending) localStorage.setItem(pending.name, pending.value);
+        pending = null;
+        timer = null;
+        lastWrite = Date.now();
+      }, intervalMs - (now - lastWrite));
+    },
+    removeItem: (name: string) => {
+      if (typeof localStorage !== "undefined") localStorage.removeItem(name);
     }
-    const heartbeat = deviceOnline && currentTime - s.simulator.lastHeartbeatLogAt >= 30000;
+  };
+}
+
+const storage = createThrottledStorage();
+
+export const useFirmwareStore = create<FirmwareState & FirmwareActions>()(persist((set) => ({
+  ...initialState(),
+  setConnection: (connection, source, info) => set((state) => {
+    const nextSource = source ?? state.source;
+    const sourceChanged = nextSource !== state.source;
+    const records = sourceChanged ? {
+      acessos: state.acessos.filter((record) => record.dataSource === nextSource),
+      logs: state.logs.filter((record) => record.dataSource === nextSource),
+      alertas: state.alertas.filter((record) => record.dataSource === nextSource)
+    } : { acessos: state.acessos, logs: state.logs, alertas: state.alertas };
     return {
-      ...updated,
-      readings: deviceOnline ? [
-        ...s.readings.filter((reading) => reading.stationId !== s.selectedStationId),
-        ...s.readings.filter((reading) => reading.stationId === s.selectedStationId).slice(-719),
-        { stationId: s.selectedStationId, timestamp: currentTime, generatedKwh: Number((powerKw * elapsed).toFixed(4)), consumedKwh: Number((0.4 * elapsed).toFixed(4)), powerKw }
-      ] : s.readings,
-      device: { ...updated.device, lastHeartbeatAt: heartbeat ? currentTime : s.device.lastHeartbeatAt },
-      simulator: { ...s.simulator, lastHeartbeatLogAt: heartbeat ? currentTime : s.simulator.lastHeartbeatLogAt },
-      logs: heartbeat ? appendLog(updated.logs, "INFO", "Heartbeat recebido", "ESP32-001", s.selectedStationId) : updated.logs
+      ...(sourceChanged ? initialState() : {}),
+      source: nextSource,
+      ...records,
+      connection,
+      connectedAt: connection === "conectado" ? Date.now() : null,
+      connectionInfo: {
+        vendorId: info?.vendorId !== undefined ? info.vendorId : (sourceChanged ? null : state.connectionInfo.vendorId),
+        productId: info?.productId !== undefined ? info.productId : (sourceChanged ? null : state.connectionInfo.productId)
+      }
     };
   }),
-  toggleSimulation: () => set((s) => ({ simulator: { ...s.simulator, paused: !s.simulator.paused }, lastTickAt: Date.now() })),
+  disconnect: (now = Date.now()) => set((state) => ({
+    connection: "desconectado",
+    connectedAt: null,
+    alertas: state.source === "usb"
+      ? appendAlert(state.alertas, { dataSource: state.source, origin: "conexao", title: "Cabo USB removido ou conexão serial encerrada", severity: "critico", openedAt: now })
+      : state.alertas
+  })),
+  processLine: (line, now = Date.now()) => {
+    const event = parseLine(line, now);
+    set((state) => {
+      let next: Partial<FirmwareState> = {
+        lastDataAt: now,
+        linesReceived: state.linesReceived + 1,
+        lineTimestamps: [...state.lineTimestamps, now].slice(-1000),
+        logs: [{ id: id("linha"), timestamp: now, level: logLevel(line), raw: line, dataSource: state.source }, ...state.logs].slice(0, 500),
+        alertas: resolveAlerts(state.alertas, "conexao", now, "Dados recebidos do ESP32")
+      };
+
+      switch (event.type) {
+        case "ldr": {
+          const point: LdrPoint = { ts: now, ldrEsq: event.ldrEsq, ldrDir: event.ldrDir, diferenca: event.diferenca, angulo: event.angulo, motor: event.motor };
+          const lastPoint = state.historicoLdr[state.historicoLdr.length - 1];
+          const shouldSample = !lastPoint || now - lastPoint.ts >= 5000;
+          next = {
+            ...next,
+            ldrEsq: event.ldrEsq,
+            ldrDir: event.ldrDir,
+            diferenca: event.diferenca,
+            angulo: event.angulo,
+            motor: event.motor,
+            historicoLdr: shouldSample
+              ? [...state.historicoLdr, point].filter((item) => item.ts >= now - 120 * 60_000)
+              : state.historicoLdr
+          };
+          break;
+        }
+        case "acessoPermitido":
+        case "acessoNegado": {
+          const allowed = event.type === "acessoPermitido";
+          const cabin = allowed ? cabinNumber(event.cabine ?? (UID_TO_CABIN[event.uid] ?? 0)) : null;
+          const access = {
+            id: id("acesso"),
+            ts: now,
+            uid: event.uid,
+            dataSource: state.source,
+            resultado: allowed ? "liberado" as const : "negado" as const,
+            ...(cabin ? { cabine: cabin } : {})
+          };
+          next = {
+            ...next,
+            acessos: [access, ...state.acessos],
+            ...(allowed && cabin ? {
+              cabines: {
+                ...state.cabines,
+                [cabin]: {
+                  ...state.cabines[cabin],
+                  ultimaLiberacao: now,
+                  totalLiberacoes: state.cabines[cabin].totalLiberacoes + 1
+                }
+              }
+            } : {}),
+            alertas: allowed ? next.alertas : appendAlert(next.alertas ?? state.alertas, {
+              dataSource: state.source, origin: "acesso", title: "ACESSO NEGADO", severity: "informacao", openedAt: now
+            })
+          };
+          break;
+        }
+        case "travaAberta": {
+          const cabin = cabinNumber(event.cabine);
+          if (cabin) {
+            const hasRecentPermit = state.acessos.some((access) => access.resultado === "liberado"
+              && access.cabine === cabin && now >= access.ts && now - access.ts <= 5000);
+            next = {
+              ...next,
+              cabines: {
+                ...state.cabines,
+                [cabin]: {
+                  ...state.cabines[cabin],
+                  estado: "liberada",
+                  ultimaLiberacao: now,
+                  totalLiberacoes: state.cabines[cabin].totalLiberacoes + (hasRecentPermit ? 0 : 1)
+                }
+              }
+            };
+          }
+          break;
+        }
+        case "travaTrancada": {
+          const cabin = cabinNumber(event.cabine);
+          if (cabin) next = { ...next, cabines: { ...state.cabines, [cabin]: { ...state.cabines[cabin], estado: "trancada" } } };
+          break;
+        }
+        case "rfidFalha":
+          next = {
+            ...next,
+            rfid: { ...state.rfid, estado: "sem_resposta", falhas: event.falhas },
+            alertas: appendAlert(next.alertas ?? state.alertas, { dataSource: state.source, origin: "rfid", title: "Leitor RFID sem resposta", severity: "atencao", openedAt: now })
+          };
+          break;
+        case "rfidReset":
+          next = {
+            ...next,
+            rfid: { ...state.rfid, estado: "em_recuperacao" },
+            alertas: appendAlert(next.alertas ?? state.alertas, { dataSource: state.source, origin: "rfid", title: "Reset do leitor RFID iniciado", severity: "atencao", openedAt: now })
+          };
+          break;
+        case "rfidRecuperado":
+          next = {
+            ...next,
+            rfid: { estado: "operacional", falhas: 0, versao: event.versao },
+            alertas: resolveAlerts(next.alertas ?? state.alertas, "rfid", now, "Leitor RFID recuperado")
+          };
+          break;
+        case "erro":
+          next = {
+            ...next,
+            alertas: appendAlert(next.alertas ?? state.alertas, { dataSource: state.source, origin: "erro", title: line.trim(), severity: "critico", openedAt: now })
+          };
+          break;
+        case "desconhecida":
+          if (/^RC522 detectado\./i.test(line.trim())) next = { ...next, rfid: { ...state.rfid, estado: "operacional" } };
+          if (/\[RFID\].*(nova tentativa|ainda sem resposta)/i.test(line)) {
+            next = { ...next, rfid: { ...state.rfid, estado: "em_recuperacao" } };
+          }
+          break;
+        case "boot":
+          next = {
+            ...next,
+            angulo: event.angulo,
+            cabines: {
+              1: { ...state.cabines[1], estado: "sem dados" },
+              2: { ...state.cabines[2], estado: "sem dados" },
+              3: { ...state.cabines[3], estado: "sem dados" },
+              4: { ...state.cabines[4], estado: "sem dados" }
+            },
+            ldrEsq: null,
+            ldrDir: null,
+            diferenca: null,
+            motor: null,
+            rfid: { estado: "sem_dados", falhas: null, versao: null }
+          };
+          break;
+      }
+      return next;
+    });
+    return event;
+  },
+  checkStaleConnection: (now = Date.now()) => set((state) => {
+    const reference = state.lastDataAt ?? state.connectedAt;
+    if (state.source !== "usb" || state.connection !== "conectado" || reference === null || now - reference <= 5000) return {};
+    return {
+      alertas: appendAlert(state.alertas, {
+        dataSource: state.source, origin: "conexao", title: "Sem dados do ESP32 há mais de 5 segundos", severity: "critico", openedAt: now
+      })
+    };
+  }),
+  markAlertSeen: (alertId, now = Date.now()) => set((state) => ({
+    alertas: state.alertas.map((alert) => alert.id === alertId && alert.seenAt === null ? { ...alert, seenAt: now } : alert)
+  })),
+  acknowledgeAlert: (alertId) => set((state) => ({
+    alertas: state.alertas.map((alert) => alert.id === alertId && alert.status === "aberto" ? { ...alert, status: "reconhecido" } : alert)
+  })),
+  resolveAlert: (alertId, note) => set((state) => ({
+    alertas: state.alertas.map((alert) => alert.id === alertId && alert.status !== "resolvido"
+      ? { ...alert, status: "resolvido", resolvedAt: Date.now(), note }
+      : alert)
+  })),
   reset: () => set(initialState())
 }), {
-  name: "solar-totem-demo",
-  storage: createJSONStorage(() => typeof localStorage === "undefined" ? noOpStorage : localStorage),
-  version: 2,
-  migrate: () => initialState()
+  name: "solar-totem-firmware",
+  storage: createJSONStorage(() => storage),
+  partialize: (state) => ({ acessos: state.acessos, logs: state.logs, alertas: state.alertas }),
+  merge: (persistedState, currentState) => {
+    const saved = isRecord(persistedState) ? persistedState : {};
+    const savedAccesses = Array.isArray(saved.acessos) ? saved.acessos.filter(isAccessRecord) : [];
+    const savedLogs = Array.isArray(saved.logs) ? saved.logs.filter(isSerialLog).slice(0, 500) : [];
+    const savedAlerts = Array.isArray(saved.alertas) ? saved.alertas.filter(isFirmwareAlert) : [];
+    const dataSource = savedAccesses[0]?.dataSource ?? savedLogs[0]?.dataSource ?? savedAlerts[0]?.dataSource ?? currentState.source;
+    const acessos = savedAccesses.filter((record) => record.dataSource === dataSource);
+    const logs = savedLogs.filter((record) => record.dataSource === dataSource);
+    const alertas = savedAlerts.filter((record) => record.dataSource === dataSource);
+    const restoredCabins = cabins();
+    for (const access of acessos) {
+      if (access.resultado !== "liberado" || !access.cabine) continue;
+      const cabin = cabinNumber(access.cabine);
+      if (!cabin) continue;
+      restoredCabins[cabin].totalLiberacoes += 1;
+      const lastRelease = restoredCabins[cabin].ultimaLiberacao;
+      if (lastRelease === null || access.ts > lastRelease) {
+        restoredCabins[cabin].ultimaLiberacao = access.ts;
+      }
+    }
+    return { ...currentState, source: dataSource, acessos, logs, alertas, cabines: restoredCabins };
+  }
 }));
 
-export function getPortDistribution(sessions: Session[], stationId: string) {
-  const counts = Array.from({ length: 4 }, (_, index) => sessions.filter((session) => session.stationId === stationId && session.portId === `PORT-00${index + 1}` && session.status === "concluida").length);
+export function getAccessDistribution(acessos: FirmwareState["acessos"], cabinFilter?: CabinNumber) {
+  const counts = [1, 2, 3, 4].map((cabin) => acessos.filter((access) => access.resultado === "liberado" && access.cabine === cabin && (!cabinFilter || cabinFilter === cabin)).length);
   const total = counts.reduce((sum, count) => sum + count, 0);
   if (!total) return counts.map(() => 0);
-  const percentages = counts.map((count) => Math.floor(count / total * 100));
-  let remainder = 100 - percentages.reduce((sum, value) => sum + value, 0);
-  for (let i = 0; remainder > 0; i = (i + 1) % percentages.length) {
-    percentages[i] += 1;
-    remainder -= 1;
-  }
-  return percentages;
-}
-
-export function calculateAvailability(outages: SolarState["outages"], start: number, end: number, stationId?: string) {
-  const total = Math.max(0, end - start);
-  if (!total) return 100;
-  const intervals = outages
-    .filter((outage) => !stationId || outage.stationId === stationId)
-    .map((outage) => [Math.max(start, outage.startedAt), Math.min(end, outage.endedAt ?? end)] as const)
-    .filter(([outageStart, outageEnd]) => outageEnd > outageStart)
-    .sort(([a], [b]) => a - b);
-  let downtime = 0;
-  let currentStart = -1;
-  let currentEnd = -1;
-  for (const [outageStart, outageEnd] of intervals) {
-    if (outageStart > currentEnd) {
-      if (currentStart >= 0) downtime += currentEnd - currentStart;
-      currentStart = outageStart;
-      currentEnd = outageEnd;
-    } else currentEnd = Math.max(currentEnd, outageEnd);
-  }
-  if (currentStart >= 0) downtime += currentEnd - currentStart;
-  return Math.max(0, Number(((total - downtime) / total * 100).toFixed(1)));
+  const exact = counts.map((count) => count * 100 / total);
+  const rounded = exact.map(Math.floor);
+  let remaining = 100 - rounded.reduce((sum, value) => sum + value, 0);
+  const order = exact.map((value, index) => ({ index, fraction: value - rounded[index] })).sort((a, b) => b.fraction - a.fraction);
+  for (let index = 0; index < remaining; index += 1) rounded[order[index].index] += 1;
+  return rounded;
 }

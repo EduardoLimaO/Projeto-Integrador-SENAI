@@ -1,112 +1,91 @@
-export type PortStatus = "disponivel" | "em_utilizacao" | "manutencao" | "bloqueada";
-export type AlertStatus = "aberto" | "reconhecido" | "resolvido";
-export type Severity = "critico" | "atencao" | "informacao";
+import type { ParsedLineEvent } from "./serial/parseLine";
+
+export type CabinNumber = 1 | 2 | 3 | 4;
+export type CabinState = "trancada" | "liberada" | "sem dados";
+export type ConnectionStatus = "conectando" | "conectado" | "desconectado";
+export type DataSource = "demo" | "usb";
 export type LogLevel = "INFO" | "WARN" | "ERROR";
+export type AlertSeverity = "critico" | "atencao" | "informacao";
+export type AlertStatus = "aberto" | "reconhecido" | "resolvido";
 
-export interface Station {
-  id: string;
-  name: string;
-  location: string;
-  online: boolean;
+export interface Cabin {
+  estado: CabinState;
+  ultimaLiberacao: number | null;
+  totalLiberacoes: number;
 }
 
-export interface Port {
+export interface AccessRecord {
   id: string;
-  stationId: string;
-  label: string;
-  status: PortStatus;
-  online: boolean;
-  lastUsedAt: number;
-  currentSessionId: string | null;
-  maintenanceReason: string | null;
-  blockedReason: string | null;
+  ts: number;
+  uid: string;
+  dataSource: DataSource;
+  resultado: "liberado" | "negado";
+  cabine?: CabinNumber;
 }
 
-export interface User {
+export interface SerialLog {
   id: string;
-  name: string;
-  registration: string;
-  active: boolean;
-}
-
-export interface Session {
-  id: string;
-  stationId: string;
-  portId: string;
-  userId: string;
-  startedAt: number;
-  endedAt: number | null;
-  kWh: number;
-  status: "ativa" | "concluida" | "cancelada";
-  targetKwh: number;
-}
-
-export interface Alert {
-  id: string;
-  stationId: string;
-  title: string;
-  origin: string;
-  severity: Severity;
-  status: AlertStatus;
-  openedAt: number;
-  acknowledgedAt: number | null;
-  acknowledgedBy: string | null;
-  resolvedAt: number | null;
-  note?: string;
-}
-
-export interface LogEntry {
-  id: string;
-  stationId: string;
   timestamp: number;
   level: LogLevel;
-  message: string;
-  origin: string;
+  raw: string;
+  dataSource: DataSource;
 }
 
-export interface EventEntry {
+export interface FirmwareAlert {
   id: string;
-  stationId: string;
-  type: "session" | "port" | "device" | "alert" | "energy";
-  message: string;
-  portId?: string;
-  timestamp: number;
+  dataSource: DataSource;
+  origin: "acesso" | "rfid" | "erro" | "conexao";
+  title: string;
+  severity: AlertSeverity;
+  status: AlertStatus;
+  openedAt: number;
+  resolvedAt: number | null;
+  note?: string;
+  seenAt: number | null;
+  cabine?: CabinNumber;
 }
 
-export interface EnergyReading {
-  stationId: string;
-  timestamp: number;
-  generatedKwh: number;
-  consumedKwh: number;
-  powerKw: number;
+export interface LdrPoint {
+  ts: number;
+  ldrEsq: number;
+  ldrDir: number;
+  diferenca: number;
+  angulo: number;
+  motor: "ESQUERDA/LESTE" | "DIREITA/OESTE" | "PARADO";
 }
 
-export interface Device {
-  firmware: string;
-  ip: string;
-  rssi: number;
-  uptimeSeconds: number;
-  lastHeartbeatAt: number;
+export interface FirmwareState {
+  connection: ConnectionStatus;
+  source: DataSource;
+  connectionInfo: { vendorId: number | null; productId: number | null };
+  connectedAt: number | null;
+  lastDataAt: number | null;
+  linesReceived: number;
+  lineTimestamps: number[];
+  ldrEsq: number | null;
+  ldrDir: number | null;
+  diferenca: number | null;
+  angulo: number | null;
+  motor: LdrPoint["motor"] | null;
+  cabines: Record<CabinNumber, Cabin>;
+  acessos: AccessRecord[];
+  logs: SerialLog[];
+  alertas: FirmwareAlert[];
+  rfid: {
+    estado: "sem_dados" | "operacional" | "em_recuperacao" | "sem_resposta";
+    falhas: number | null;
+    versao: string | null;
+  };
+  historicoLdr: LdrPoint[];
 }
 
-export interface Outage {
-  stationId: string;
-  startedAt: number;
-  endedAt: number | null;
-}
-
-export interface SolarState {
-  stations: Station[];
-  selectedStationId: string;
-  ports: Port[];
-  sessions: Session[];
-  users: User[];
-  alerts: Alert[];
-  logs: LogEntry[];
-  events: EventEntry[];
-  readings: EnergyReading[];
-  device: Device;
-  outages: Outage[];
-  simulator: { paused: boolean; lastHeartbeatLogAt: number };
-  lastTickAt: number;
+export interface FirmwareActions {
+  setConnection: (connection: ConnectionStatus, source?: DataSource, info?: { vendorId?: number | null; productId?: number | null }) => void;
+  disconnect: (now?: number) => void;
+  processLine: (line: string, now?: number) => ParsedLineEvent;
+  checkStaleConnection: (now?: number) => void;
+  markAlertSeen: (id: string, now?: number) => void;
+  acknowledgeAlert: (id: string) => void;
+  resolveAlert: (id: string, note: string) => void;
+  reset: () => void;
 }

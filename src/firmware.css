@@ -1,0 +1,137 @@
+.firmware-app .sidebar{top:0}
+.firmware-app .main-area{padding-top:0}
+.firmware-app .topbar{top:0}
+.firmware-app .mobile-backdrop{inset:0}
+.serial-status{display:flex;align-items:center;gap:11px}
+.serial-status small,.serial-status b{display:block}
+.serial-status small{font-size:9px;color:var(--muted);margin-bottom:3px}
+.serial-status b{font-size:11px}
+.firmware-theme-toggle{width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font-size:18px}
+.sidebar-footer-note{padding:9px 10px 0;border-top:1px solid var(--line);font-size:9px;color:var(--muted)}
+.firmware-app .page-heading{align-items:center}
+.firmware-app .page-heading h1{font-size:26px}
+.firmware-app .station-visual{height:220px}
+.firmware-app .solar-grid{transform-origin:center}
+.firmware-app .connector-grid i.cabin-lock{border-radius:50%;border:2px solid #879895}
+.firmware-app .connector-grid i.lock-locked{background:#d9f0e2;border-color:#36a269}
+.firmware-app .connector-grid i.lock-released{background:#f4b942;border-color:#c99524}
+.firmware-app .connector-grid i.lock-unknown{background:#edf1f0;border-color:#aab8b5}
+.firmware-app .cabin-icon{font-size:12px}
+.firmware-app .cabin-icon.unknown{background:#edf1f0;color:#7a8986}
+.firmware-app .firmware-bars .bar{background:#4c9297}
+.firmware-app .firmware-bars .bar-column{gap:5px}
+.firmware-event{height:auto;min-height:48px;padding:8px 0}
+.firmware-event>span{min-width:0}
+.firmware-event b{overflow-wrap:anywhere;line-height:1.45}
+.cabin-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.cabin-card{padding:0 0 15px}
+.cabin-card .data-list{margin-top:5px}
+.cabin-card>.button-secondary{margin-top:0}
+.cabin-lock-visual{height:132px;margin:0 13px 12px;border-radius:8px;background:#f3f7f6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted)}
+.cabin-lock-visual .lock-symbol{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;background:#e6edeb;color:#84938f;font-size:23px}
+.cabin-lock-visual.trancada .lock-symbol{background:#e8f4ec;color:#2c8554}
+.cabin-lock-visual.liberada .lock-symbol{background:#fff4dc;color:#a97714}
+.cabin-lock-visual small{font-size:9px}
+.tracker-grid{grid-template-columns:minmax(0,1.35fr) minmax(300px,.8fr)}
+.legend-control{border:0;background:transparent;opacity:.45;font-size:9px}
+.legend-control.legend-on{opacity:1}
+.legend.left{background:#1f6f78}
+.legend.right{background:#f4b942}
+.firmware-line{height:300px}
+.firmware-line svg{height:240px}
+.line-generated{stroke:#1f6f78}
+.line-consumed{stroke:#f4b942}
+.angle-gauge{height:245px;position:relative;display:flex;justify-content:center;align-items:center}
+.angle-gauge svg{width:min(100%,320px);height:210px;overflow:visible}
+.angle-gauge svg text{font-size:8px;fill:var(--muted)}
+.gauge-track,.gauge-fill{fill:none;stroke:#e4eae8;stroke-width:11;stroke-linecap:round}
+.gauge-fill{stroke:#1f6f78;stroke-dasharray:252;stroke-dashoffset:0}
+.gauge-needle{stroke:#f4b942;stroke-width:4;stroke-linecap:round}
+.angle-gauge circle{fill:#123c4a}
+.angle-gauge strong{position:absolute;top:135px;font-size:23px}
+.tracker-disclaimer{padding:0 3px 12px}
+.period-tabs{flex-wrap:wrap}
+.custom-date-range{display:flex;align-items:center;gap:8px;margin-left:auto}
+.custom-date-range label{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--muted)}
+.custom-date-range input{height:31px;border:1px solid var(--line);border-radius:6px;padding:0 7px;background:var(--surface);color:var(--ink);font-size:9px}
+.access-bars{overflow-x:auto;justify-content:flex-start;gap:7px}
+.access-bars .bar-column{min-width:32px}
+.access-bars .bar{width:min(22px,70%)}
+.access-donut{cursor:pointer;flex:none}
+.selected-filter{background:#edf4f3!important;border-radius:5px}
+.table-card .muted{font-size:9px;color:var(--muted)}
+.access-table{min-width:520px}
+.tech-grid{grid-template-columns:1fr 1fr}
+.text-warning{color:#a97714!important}
+.text-pending{color:#788782!important}
+.firmware-log-toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.firmware-log-toolbar .ldr-toggle{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--muted)}
+.firmware-log-toolbar input[type=checkbox]{accent-color:var(--teal)}
+.firmware-logs{max-height:430px;overflow:auto}
+.firmware-logs table{min-width:620px}
+.firmware-logs thead{position:sticky;top:0;z-index:1;background:var(--surface)}
+.firmware-logs .raw-line{white-space:pre-wrap;overflow-wrap:anywhere}
+.serial-error{position:fixed;z-index:45;right:20px;top:76px;max-width:min(460px,calc(100vw - 30px));display:flex;gap:14px;align-items:center;padding:11px 14px;border:1px solid #e8c1be;border-radius:8px;background:#fff0ee;color:#a52d25;box-shadow:var(--shadow);font-size:10px}
+.serial-error button{border:0;background:transparent;font-size:17px;color:inherit}
+.firmware-notifications{position:fixed;right:25px;top:76px;width:min(350px,calc(100vw - 24px));max-height:75vh;overflow:auto}
+.firmware-notifications .card-head{min-height:48px}
+.notification-row{display:flex;align-items:center;gap:10px;padding:11px 15px;border-bottom:1px solid var(--line)}
+.notification-row b,.notification-row small{display:block}
+.notification-row b{font-size:10px}
+.notification-row small{font-size:8px;color:var(--muted);margin-top:4px}
+.notification-row:hover{background:#f5f8f7}
+.empty-state{min-height:130px;padding:23px 15px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--muted)}
+.empty-state>span{font-size:24px;color:#90a29e}
+.empty-state>b{font-size:11px;color:var(--ink);margin-top:5px}
+.empty-state>p{font-size:9px;line-height:1.5;margin:5px 0 0}
+.firmware-app .modal-head{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--line)}
+.firmware-app .modal-head h2{font-size:13px;margin:0}
+.firmware-app .modal-body{padding:16px 18px}
+.firmware-app .modal-body textarea{display:block;width:100%;min-height:90px;margin-top:6px;padding:9px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink);resize:vertical}
+.firmware-app .modal-footer{display:flex;justify-content:flex-end;gap:8px;margin-top:15px}
+.alert-consult>p{font-size:10px;color:var(--muted);margin:14px 0 9px}
+.alert-consult>.button-secondary{display:inline-flex;align-items:center;padding:0 12px;height:34px;border:1px solid var(--line);border-radius:7px;font-size:10px;font-weight:750}
+.firmware-app .alert-card{flex-wrap:wrap}
+.firmware-app .alert-actions{flex-wrap:wrap;justify-content:flex-end}
+.dark .firmware-app .cabin-lock-visual,.dark .firmware-app .button-secondary,.dark .firmware-app .firmware-theme-toggle{background:#25373b;color:var(--ink)}
+.dark .firmware-app .cabin-lock-visual.trancada .lock-symbol{background:#254b3b;color:#70c891}
+.dark .firmware-app .cabin-lock-visual.liberada .lock-symbol{background:#514321;color:#f4c85f}
+.dark .firmware-app .empty-state>span{color:#718582}
+.dark .firmware-notifications .notification-row:hover{background:#25373b}
+.dark .serial-error{background:#492d2d;color:#ffd9d5;border-color:#704441}
+
+@media(max-width:1180px){
+  .cabin-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tracker-grid{grid-template-columns:1fr}
+}
+@media(max-width:760px){
+  .firmware-app .sidebar{top:0}
+  .firmware-app .main-area{padding-top:0}
+  .firmware-app .topbar{top:0;padding:0 12px}
+  .serial-status{gap:7px}
+  .serial-status small{font-size:8px}
+  .serial-status b{font-size:9px}
+  .top-actions .button-primary,.top-actions .button-secondary{width:38px;padding:0;font-size:0}
+  .top-actions .button-primary span{display:none}
+  .top-actions .button-primary:first-letter{font-size:18px}
+  .cabin-grid{grid-template-columns:1fr 1fr;gap:8px}
+  .cabin-card .data-list{grid-template-columns:1fr}
+  .cabin-card .data-list dd{text-align:left;margin-top:-6px}
+  .custom-date-range{width:100%;margin:5px 8px 8px}
+  .custom-date-range label{flex:1}
+  .custom-date-range input{min-width:0;width:100%}
+  .firmware-log-toolbar{flex-wrap:wrap}
+  .firmware-log-toolbar input{width:min(100%,260px)}
+  .firmware-log-toolbar .ldr-toggle{width:100%}
+  .firmware-notifications{right:10px;top:68px}
+  .serial-error{right:10px;top:68px}
+}
+@media(max-width:430px){
+  .serial-status small{display:none}
+  .serial-status b{max-width:96px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .firmware-app .page-heading h1{font-size:22px}
+  .cabin-grid{grid-template-columns:1fr}
+  .cabin-card .data-list{grid-template-columns:1fr auto}
+  .cabin-card .data-list dd{text-align:right;margin:0}
+  .angle-gauge strong{top:135px}
+}
