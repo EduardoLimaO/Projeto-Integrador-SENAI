@@ -68,7 +68,4 @@ npm run build
 - A aplicação salva localmente apenas acessos, logs e alertas. Nenhum dado é enviado a um servidor.
 - O firmware atual não aceita comandos de abertura de cabine; o botão correspondente permanece desabilitado.
 
-## Publicar
 
-Envie as alterações ao GitHub e conecte o repositório a uma hospedagem estática compatível com Vite, como Vercel. A configuração de rota SPA está em `vercel.json`. A Web Serial requer uma origem segura, como `localhost` ou HTTPS; os dados locais não são compartilhados entre navegadores.
->>>>>>> 1890191 (Atualiza painel com integração serial)
