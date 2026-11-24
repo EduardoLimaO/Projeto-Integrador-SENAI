@@ -34,6 +34,3 @@ npm run build
 - Leituras de energia são simuladas. Indicadores de CO₂ e economia não são exibidos sem uma metodologia/fator definido.
 - O fluxo de autenticação é apenas demonstrativo; não use dados pessoais ou senhas reais.
 
-## Publicar
-
-Envie as alterações ao GitHub e conecte o repositório a uma hospedagem estática compatível com Vite, como Vercel. A configuração de rota SPA está em `vercel.json`. A publicação ainda não transforma os dados locais em dados compartilhados: cada navegador mantém sua própria demonstração.
