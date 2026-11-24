@@ -29,8 +29,4 @@ npm run build
 ## Demonstração
 
 - O estado central usa Zustand e é salvo em `localStorage`.
-- O simulador atualiza energia, sessões, heartbeat e logs; as ações de demonstração permitem simular indisponibilidade, manutenção e picos de demanda.
-- **Resetar demonstração** fica no menu do usuário.
-- Leituras de energia são simuladas. Indicadores de CO₂ e economia não são exibidos sem uma metodologia/fator definido.
-- O fluxo de autenticação é apenas demonstrativo; não use dados pessoais ou senhas reais.
 
