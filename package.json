@@ -1,0 +1,15 @@
+{
+  "name": "solar-totem",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Solar Totem management platform",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js",
+    "test": "node tests/api.test.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
