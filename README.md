@@ -9,8 +9,8 @@
 Siga os passos abaixo para rodar a aplicação em seu ambiente local:
 
 ### Pré-requisitos
-* [Node.js](https://nodejs.org/) (versão 18 ou superior)
-* [MySQL](https://www.devmedia.com.br/como-instalar-o-mysql/38202) (caso vá utilizar banco de dados real)
+* [Node.js](https://nodejs.org/) 
+* [MySQL](https://www.devmedia.com.br/como-instalar-o-mysql/38202) 
 
 ### Passo a passo
 
